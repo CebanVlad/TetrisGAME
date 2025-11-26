@@ -1,223 +1,239 @@
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.Random;
 
-public class Tetris extends JPanel implements ActionListener {
+public class Tetris extends JPanel implements ActionListener, KeyListener {
 
-    private final int BOARD_WIDTH = 12;   // mai lat
-    private final int BOARD_HEIGHT = 24;  // mai înalt
-    private final int TILE_SIZE = 35;     // pătrate mai mari
+    private final int BOARD_WIDTH = 10;
+    private final int BOARD_HEIGHT = 20;
+    private final int BLOCK_SIZE = 30;
+
     private Timer timer;
-    private boolean[][] board = new boolean[BOARD_HEIGHT][BOARD_WIDTH];
-    private Tetromino currentPiece;
-    private int pieceX = 4, pieceY = 0;
+    private int speed = 500;
+
+    private Color[][] board;
+    private Shape currentShape;
+
     private int score = 0;
     private boolean gameOver = false;
 
     public Tetris() {
-        setPreferredSize(new Dimension(BOARD_WIDTH * TILE_SIZE, BOARD_HEIGHT * TILE_SIZE));
+        board = new Color[BOARD_HEIGHT][BOARD_WIDTH];
+        setPreferredSize(new Dimension(BOARD_WIDTH * BLOCK_SIZE, BOARD_HEIGHT * BLOCK_SIZE));
         setBackground(Color.BLACK);
-
-        timer = new Timer(500, this);
-        timer.start();
-
-        addKeyListener(new KeyAdapter() {
-            public void keyPressed(KeyEvent e) {
-                if (gameOver) return;
-                switch (e.getKeyCode()) {
-                    case KeyEvent.VK_LEFT: if (canMove(-1,0)) pieceX--; break;
-                    case KeyEvent.VK_RIGHT: if (canMove(1,0)) pieceX++; break;
-                    case KeyEvent.VK_DOWN: if (canMove(0,1)) pieceY++; break;
-                    case KeyEvent.VK_UP: rotatePiece(); break;
-                }
-                repaint();
-            }
-        });
-
         setFocusable(true);
-        spawnPiece();
+        addKeyListener(this);
+
+        spawnShape();
+
+        timer = new Timer(speed, this);
+        timer.start();
     }
 
-    private void spawnPiece() {
-        currentPiece = Tetromino.randomTetromino();
-        pieceX = BOARD_WIDTH / 2 - 1;
-        pieceY = 0;
-        if (!canMove(0,0)) gameOver = true;
+    public static void main(String[] args) {
+        JFrame frame = new JFrame("Tetris GAME");
+        Tetris game = new Tetris();
+
+        frame.add(game);
+        frame.pack();
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+    }
+
+    // ===================== SHAPES ===================== //
+
+    private class Shape {
+        int[][] coords;
+        Color color;
+        int x = 3, y = 0;
+
+        Shape(int[][] c, Color col) {
+            coords = c;
+            color = col;
+        }
+
+        void rotate() {
+            int[][] oldCoords = coords; // salvăm forma veche
+
+            // inversăm dimensiunile pentru rotație
+            int[][] rotated = new int[coords[0].length][coords.length];
+            for (int i = 0; i < coords.length; i++)
+                for (int j = 0; j < coords[0].length; j++)
+                    rotated[j][coords.length - 1 - i] = coords[i][j];
+
+            coords = rotated;
+
+            if (!isValidPosition()) {
+                coords = oldCoords; // revenim la forma veche dacă nu e valid
+            }
+        }
+
+        boolean isValidPosition() {
+            for (int i = 0; i < coords.length; i++) {
+                for (int j = 0; j < coords[0].length; j++) {
+                    if (coords[i][j] == 1) {
+                        int newX = x + j;
+                        int newY = y + i;
+
+                        if (newX < 0 || newX >= BOARD_WIDTH || newY >= BOARD_HEIGHT)
+                            return false;
+
+                        if (newY >= 0 && board[newY][newX] != null)
+                            return false;
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
+    private void spawnShape() {
+        int type = (int) (Math.random() * 7);
+
+        switch (type) {
+            case 0 -> currentShape = new Shape(new int[][]{{1, 1, 1, 1}}, Color.CYAN);
+            case 1 -> currentShape = new Shape(new int[][]{{1, 1}, {1, 1}}, Color.YELLOW);
+            case 2 -> currentShape = new Shape(new int[][]{{0, 1, 0}, {1, 1, 1}}, Color.MAGENTA);
+            case 3 -> currentShape = new Shape(new int[][]{{1, 0, 0}, {1, 1, 1}}, Color.ORANGE);
+            case 4 -> currentShape = new Shape(new int[][]{{0, 0, 1}, {1, 1, 1}}, Color.BLUE);
+            case 5 -> currentShape = new Shape(new int[][]{{1, 1, 0}, {0, 1, 1}}, Color.GREEN);
+            case 6 -> currentShape = new Shape(new int[][]{{0, 1, 1}, {1, 1, 0}}, Color.RED);
+        }
+    }
+
+    // ===================== GAME LOGIC ===================== //
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (!gameOver) {
+            if (canMove(0, 1)) {
+                currentShape.y++;
+            } else {
+                lockShape();
+                clearLines();
+                spawnShape();
+                if (!currentShape.isValidPosition()) {
+                    gameOver = true;
+                    timer.stop();
+                }
+            }
+            repaint();
+        }
     }
 
     private boolean canMove(int dx, int dy) {
-        for (Point p : currentPiece.getShape()) {
-            int newX = pieceX + p.x + dx;
-            int newY = pieceY + p.y + dy;
-            if (newX < 0 || newX >= BOARD_WIDTH || newY < 0 || newY >= BOARD_HEIGHT) return false;
-            if (board[newY][newX]) return false;
+        currentShape.x += dx;
+        currentShape.y += dy;
+
+        boolean valid = currentShape.isValidPosition();
+
+        if (!valid) {
+            currentShape.x -= dx;
+            currentShape.y -= dy;
         }
-        return true;
+
+        return valid;
     }
 
-    private void rotatePiece() {
-        currentPiece.rotate();
-        if (!canMove(0,0)) currentPiece.rotateBack();
-    }
-
-    private void fixPiece() {
-        for (Point p : currentPiece.getShape()) {
-            board[pieceY + p.y][pieceX + p.x] = true;
+    private void lockShape() {
+        for (int i = 0; i < currentShape.coords.length; i++) {
+            for (int j = 0; j < currentShape.coords[0].length; j++) {
+                if (currentShape.coords[i][j] == 1) {
+                    int px = currentShape.x + j;
+                    int py = currentShape.y + i;
+                    if (py >= 0)
+                        board[py][px] = currentShape.color;
+                }
+            }
         }
-        clearLines();
-        spawnPiece();
     }
 
     private void clearLines() {
-        for (int y = BOARD_HEIGHT-1; y >= 0; y--) {
+        int linesCleared = 0;
+
+        for (int i = BOARD_HEIGHT - 1; i >= 0; i--) {
             boolean full = true;
-            for (int x = 0; x < BOARD_WIDTH; x++) {
-                if (!board[y][x]) full = false;
-            }
-            if (full) {
-                score += 100;
-                for (int i = y; i > 0; i--) {
-                    System.arraycopy(board[i-1],0,board[i],0,BOARD_WIDTH);
+            for (int j = 0; j < BOARD_WIDTH; j++) {
+                if (board[i][j] == null) {
+                    full = false;
+                    break;
                 }
-                for (int x = 0; x < BOARD_WIDTH; x++) board[0][x] = false;
-                y++; // verifică linia nouă
+            }
+
+            if (full) {
+                linesCleared++;
+                for (int k = i; k > 0; k--) {
+                    System.arraycopy(board[k - 1], 0, board[k], 0, BOARD_WIDTH);
+                }
+                for (int j = 0; j < BOARD_WIDTH; j++) board[0][j] = null;
+                i++;
             }
         }
-        // crește viteza Timerului pe măsură ce scorul crește
-        timer.setDelay(Math.max(100, 500 - score/5));
+
+        if (linesCleared > 0)
+            score += linesCleared * 100;
     }
 
-    public void actionPerformed(ActionEvent e) {
-        if (gameOver) {
-            timer.stop();
-        } else if (canMove(0,1)) {
-            pieceY++;
-        } else {
-            fixPiece();
-        }
-        repaint();
-    }
+    // ===================== DRAW ===================== //
 
-    public void paintComponent(Graphics g) {
+    @Override
+    protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
-        // fundal gradient
-        Graphics2D g2 = (Graphics2D) g;
-        GradientPaint gp = new GradientPaint(0,0,Color.DARK_GRAY,0,getHeight(),Color.BLACK);
-        g2.setPaint(gp);
-        g2.fillRect(0,0,getWidth(),getHeight());
-
-        // board
-        for (int y=0; y<BOARD_HEIGHT; y++) {
-            for (int x=0; x<BOARD_WIDTH; x++) {
-                if (board[y][x]) {
-                    g.setColor(Color.LIGHT_GRAY);
-                    g.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        // blocurile căzute
+        for (int y = 0; y < BOARD_HEIGHT; y++)
+            for (int x = 0; x < BOARD_WIDTH; x++)
+                if (board[y][x] != null) {
+                    g.setColor(board[y][x]);
+                    g.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
                     g.setColor(Color.BLACK);
-                    g.drawRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    g.drawRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
                 }
-            }
-        }
 
-        // piesa curenta
-        if (!gameOver) {
-            g.setColor(currentPiece.getColor());
-            for (Point p : currentPiece.getShape()) {
-                int px = (pieceX + p.x) * TILE_SIZE;
-                int py = (pieceY + p.y) * TILE_SIZE;
-                g.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-                g.setColor(Color.BLACK);
-                g.drawRect(px, py, TILE_SIZE, TILE_SIZE);
-                g.setColor(currentPiece.getColor());
-            }
-        }
+        // forma curentă
+        g.setColor(currentShape.color);
+        for (int i = 0; i < currentShape.coords.length; i++)
+            for (int j = 0; j < currentShape.coords[0].length; j++)
+                if (currentShape.coords[i][j] == 1) {
+                    int px = (currentShape.x + j) * BLOCK_SIZE;
+                    int py = (currentShape.y + i) * BLOCK_SIZE;
+                    g.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                    g.setColor(Color.BLACK);
+                    g.drawRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                    g.setColor(currentShape.color);
+                }
 
         // scor
         g.setColor(Color.WHITE);
         g.drawString("Score: " + score, 10, 20);
+        g.drawString("Press UP to rotate", 10, 40);
 
-        // game over
         if (gameOver) {
-            g.setColor(Color.YELLOW);
-            g.setFont(new Font("Arial", Font.BOLD, 30));
-            g.drawString("GAME OVER", getWidth()/2 - 90, getHeight()/2);
+            g.setColor(Color.RED);
+            g.drawString("GAME OVER!", getWidth() / 2 - 40, getHeight() / 2);
         }
     }
 
-    public static void main(String[] args) {
-        JFrame frame = new JFrame("Tetris Colorat și Dinamic");
-        Tetris game = new Tetris();
-        frame.add(game);
-        frame.pack();
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setVisible(true);
-    }
-}
+    // ===================== CONTROLS ===================== //
 
-// Tetromino cu culori și rotații
-class Tetromino {
-    private Point[] shape;
-    private int rotationIndex = 0;
-    private Point[][] rotations;
-    private Color color;
+    @Override
+    public void keyPressed(KeyEvent e) {
+        if (gameOver) return;
 
-    private Tetromino(Point[][] rotations, Color color) {
-        this.rotations = rotations;
-        this.color = color;
-        this.shape = rotations[0];
+        switch (e.getKeyCode()) {
+            case KeyEvent.VK_LEFT -> canMove(-1, 0);
+            case KeyEvent.VK_RIGHT -> canMove(1, 0);
+            case KeyEvent.VK_DOWN -> canMove(0, 1);
+            case KeyEvent.VK_UP -> currentShape.rotate();
+            case KeyEvent.VK_SPACE -> {
+                while (canMove(0, 1)) {}
+            }
+        }
+
+        repaint();
     }
 
-    public Point[] getShape() { return shape; }
-    public Color getColor() { return color; }
-
-    public void rotate() {
-        rotationIndex = (rotationIndex + 1) % rotations.length;
-        shape = rotations[rotationIndex];
-    }
-
-    public void rotateBack() {
-        rotationIndex = (rotationIndex - 1 + rotations.length) % rotations.length;
-        shape = rotations[rotationIndex];
-    }
-
-    public static Tetromino randomTetromino() {
-        Point[][][] allShapes = {
-                // I
-                { {new Point(0,0), new Point(0,1), new Point(0,2), new Point(0,3)},
-                        {new Point(0,0), new Point(1,0), new Point(2,0), new Point(3,0)} },
-                // O
-                { {new Point(0,0), new Point(1,0), new Point(0,1), new Point(1,1)} },
-                // T
-                { {new Point(0,0), new Point(-1,1), new Point(0,1), new Point(1,1)},
-                        {new Point(0,0), new Point(0,1), new Point(1,0), new Point(0,-1)},
-                        {new Point(0,0), new Point(-1,0), new Point(0,-1), new Point(1,0)},
-                        {new Point(0,0), new Point(-1,0), new Point(0,1), new Point(0,-1)} },
-                // L
-                { {new Point(0,0), new Point(0,1), new Point(0,2), new Point(1,2)},
-                        {new Point(0,0), new Point(1,0), new Point(2,0), new Point(0,1)},
-                        {new Point(0,0), new Point(0,1), new Point(0,2), new Point(-1,2)},
-                        {new Point(0,0), new Point(0,1), new Point(1,1), new Point(2,1)} },
-                // J
-                { {new Point(0,0), new Point(0,1), new Point(0,2), new Point(-1,2)},
-                        {new Point(0,0), new Point(0,1), new Point(1,1), new Point(2,1)},
-                        {new Point(0,0), new Point(1,0), new Point(0,1), new Point(0,2)},
-                        {new Point(0,0), new Point(-2,0), new Point(-1,0), new Point(0,1)} },
-                // S
-                { {new Point(0,0), new Point(1,0), new Point(0,1), new Point(-1,1)},
-                        {new Point(0,0), new Point(0,1), new Point(1,1), new Point(1,2)} },
-                // Z
-                { {new Point(0,0), new Point(-1,0), new Point(0,1), new Point(1,1)},
-                        {new Point(0,0), new Point(0,1), new Point(-1,1), new Point(-1,2)} }
-        };
-
-        Color[] colors = {Color.CYAN, Color.YELLOW, Color.MAGENTA, Color.ORANGE, Color.BLUE, Color.GREEN, Color.RED};
-
-        Random r = new Random();
-        int idx = r.nextInt(allShapes.length);
-        Point[][] rotations = allShapes[idx];
-        Color color = colors[r.nextInt(colors.length)];
-
-        return new Tetromino(rotations, color);
-    }
+    @Override public void keyTyped(KeyEvent e) {}
+    @Override public void keyReleased(KeyEvent e) {}
 }
