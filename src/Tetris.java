@@ -6,7 +6,7 @@ public class Tetris extends JPanel implements ActionListener, KeyListener {
 
     private final int BOARD_WIDTH = 10;
     private final int BOARD_HEIGHT = 20;
-    private final int BLOCK_SIZE = 30;
+    private final int BLOCK_SIZE = 40;  // mai mare pentru ecran mai mare
 
     private Timer timer;
     private int speed = 500;
